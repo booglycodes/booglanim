@@ -1,0 +1,25 @@
+{
+  "name": "booglanim",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^1.4.0",
+    "client-zip": "^2.4.4",
+    "monaco-editor": "^0.43.0",
+    "vite-raw-plugin": "^1.0.2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.4.0",
+    "raw-loader": "^4.0.2",
+    "typescript": "^5.0.2",
+    "vite": "^4.4.4",
+    "vite-plugin-monaco-editor": "^1.1.0"
+  }
+}

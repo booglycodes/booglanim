@@ -1,0 +1,52 @@
+// EXAMPLE BOOGLANIM PROJECT
+import { World } from "@booglanim/world"
+import { Resources } from "@booglanim/resources"
+import { loadObj } from "@booglanim/obj"
+import { from, move } from "@booglanim/anim"
+import { pt } from "@booglanim/point"
+import { loadCharacter } from "@booglanim/character"
+
+async function getWorld(): Promise<World> {
+    // this will contain all the resources that this booglanim project uses.
+    // don't worry too much about it, basically just pass it into any of the `load` functions that need it.
+    let res = new Resources
+    
+    // this would create a new character and set it's scale to 0.5 
+    // (assuming Documents/some_character.json was a character file)
+    // let b = await loadCharacter('Documents/some_character.json', res)
+    // b.scale = 0.5
+    // 
+    // this would create a new object and set it's scale to 0.5
+    // (assuming )
+    // let a = await loadObj('Documents/some_image.png', res)
+    // a.scale = 0.5
+    //
+    // side note: all the load functions need to be called like `await load...`
+
+    return { 
+        res: res, 
+        // this needs to contain all the objects that you want to animate/be visible
+        things: [
+            // a,
+            // b  
+        ],
+        // fps of the output video and playback
+        fps: 16, 
+        tasks: [
+            // this would move the character b to the point 1, 1 from frame 0 -> frame 32 
+            // from(0, 32, move(b, pt(1, 1))),
+
+            // this would move the character a to the point 1, 1 from frame 32 -> frame 64
+            // (because it runs after the first command)
+            // from(0, 32, move(a, pt(1, 1))),
+
+            // if you want things to happen at the same time, or at overlapping times, put them in a group:
+            /*
+            [
+                from(0, 32, move(b, pt(0, -1)))
+                from(0, 32, move(a, pt(0, -1)))
+            ]
+            */
+        ]
+    }
+}

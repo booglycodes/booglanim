@@ -1,0 +1,72 @@
+:root {
+    font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 400;
+
+    color: #0f0f0f;
+    background-color: #f6f6f6;
+
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
+    overflow: hidden;
+}
+
+#body {
+    margin: 0
+}
+
+#canvas {
+    margin: 0,
+}
+
+#wrapper {
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    background: #1f1f1f;
+}
+
+#container {
+    display: flex;
+    flex-flow: column;
+    height: 100%;
+    flex: 1 1 auto;
+}
+
+.horizontal-spacer {
+    width : 50px;
+    height : 100%;
+    margin:0;
+}
+
+.vertical-spacer {
+    width: 100vw;
+    height: 15px;
+    background: #1f1f1f;
+}
+
+#topbar {
+    display: flex;
+    width: 100vw;
+    height: 30px;
+    color: #f0f0f0;
+    background: #181818;
+}
+
+.button {
+    margin-top: auto; 
+    margin-bottom: auto; 
+    margin-left: 5px;
+    height: 90%;
+}
+
+#status {
+    margin-top: auto; 
+    margin-bottom: auto; 
+    margin-left: 5px;
+    height: 90%;
+}

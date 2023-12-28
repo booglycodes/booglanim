@@ -1,0 +1,26 @@
+<!-- main booglanim editor -->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script type="module" src="/src/main.ts" defer></script>
+</head>
+
+<body id="wrapper">
+    <div id="topbar">
+        <div class="horizontal-spacer"></div>
+        <img id="save" src="/src/assets/save.svg" class="button" style="height: 70%;" alt="save"/>
+        <img id="build" src="/src/assets/build.svg" class="button" style="height: 70%;" alt="build"/>
+        <img id="export" src="/src/assets/export.svg" class="button" style="height:80%" alt="build"/>
+        <img id="play" src="/src/assets/play.svg" class="button" alt="play" onlick="play()"/>
+        <img id="pause" src="/src/assets/pause.svg" class="button" alt="pause"/>
+        <img id="stop" src="/src/assets/stop.svg" class="button" alt="stop"/>
+        <div class="horizontal-spacer"></div>
+        <p id="status"></p>
+    </div>
+    <div class="vertical-spacer"></div>
+    <div id="container"></div>
+</body>
+</html>
