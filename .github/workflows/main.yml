@@ -7,8 +7,10 @@ on:
       - release
 
 jobs:
-  build-test-lint-windows:
-    name: Windows - FFmpeg ${{ matrix.ffmpeg_version }} - build, test and lint
+  build-windows:
+    permissions:
+      contents: write
+    name: Windows
     runs-on: windows-latest
     strategy:
       matrix:
