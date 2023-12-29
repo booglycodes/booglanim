@@ -37,15 +37,14 @@ pub struct Renderer {
     texture_view: TextureView,
     texture: wgpu::Texture,
     texture_size: wgpu::Extent3d,
-    // The window must be declared after the surface so
-    // it gets dropped after it as the surface contains
-    // unsafe references to the window's resources.
-    window: winit::window::Window,
 }
 
 const RECT: &[u16; 6] = &[0, 1, 2, 0, 2, 3];
 impl Renderer {
-    pub async fn new(window: Window, images: &HashMap<u64, DynamicImage>) -> Self {
+    // provided Window must outlive the constructed Renderer, Renderer struct has unsafe 
+    // references to Window.
+    pub async fn new(window: &Window, images: &HashMap<u64, DynamicImage>) -> Self {
+
         let size = PhysicalSize::new(1920, 1080);
         let window_size = window.inner_size();
 
@@ -90,9 +89,7 @@ impl Renderer {
         let texture_view = texture.create_view(&Default::default());
 
         // # Safety
-        //
         // The surface needs to live as long as the window that created it.
-        // State owns the window so this should be safe.
         let surface = unsafe { instance.create_surface(&window) }.unwrap();
 
         let adapter = instance
@@ -146,8 +143,8 @@ impl Renderer {
         let triangle_pipeline = triangle_pipeline(&device, surface_format);
         let (screen_pipeline, screen_bind_group_layout) =
             screen_pipeline(&window_device, surface_format);
+
         Self {
-            window,
             surface,
             window_device,
             window_queue,
@@ -449,10 +446,6 @@ impl Renderer {
         }
 
         encoder.finish().unwrap();
-    }
-
-    pub fn window(&self) -> &Window {
-        &self.window
     }
 
     pub fn refresh_texture_pipeline(&mut self, images: &HashMap<u64, DynamicImage>) {

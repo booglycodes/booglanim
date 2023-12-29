@@ -6,10 +6,6 @@
       "distDir": "../dist",
       "withGlobalTauri": true
     },
-    "package": {
-      "productName": "booglanim",
-      "version": "0.0.0"
-    },
     "tauri": {
       "allowlist": {
         "shell": {
