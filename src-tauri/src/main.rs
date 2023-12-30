@@ -4,7 +4,7 @@
 use app_data::AppData;
 use request_handlers::{add_frames, pause, play, stop, export, to_base64_png, update_media_resources};
 
-use std::{sync::{mpsc, Arc, Mutex}, thread};
+use std::{sync::{mpsc, Arc, RwLock}, thread};
 
 mod app_data;
 mod renderer;
@@ -20,7 +20,7 @@ fn main() {
     let data = AppData::new();
     let (update_media_resources_signal_tx, update_media_resources_signal_rx) = mpsc::channel();
     let (encode_video_signal_tx, encode_video_signal_rx) = mpsc::channel();
-    let data = Arc::new(Mutex::new(data));
+    let data = Arc::new(RwLock::new(data));
     {
         let data = data.clone();
         thread::spawn(move || {

@@ -21,6 +21,7 @@ use winit::window::Window;
 pub struct Renderers {
     pub image_renderer: Mutex<ImageRenderer>,
     pub window_renderer: Mutex<WindowRenderer>,
+    pub latest_image: Option<ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
 }
 
 pub enum RenderingError {
@@ -48,6 +49,7 @@ impl Renderers {
         Self {
             window_renderer: Mutex::new(window_renderer),
             image_renderer: Mutex::new(image_renderer),
+            latest_image: None,
         }
     }
 
@@ -55,7 +57,7 @@ impl Renderers {
         &self,
         frame: &Vec<Value>,
         images: &HashMap<u64, DynamicImage>,
-    ) -> Result<(), RenderingError> {
+    ) -> Result<ImageBuffer<image::Rgba<u8>, Vec<u8>>, RenderingError> {
         fn lock_renderer<'a, T>(
             renderer: &'a Mutex<T>,
         ) -> Result<MutexGuard<'a, T>, RenderingError> {
@@ -65,9 +67,11 @@ impl Renderers {
         }
         let image_renderer = lock_renderer(&self.image_renderer)?;
         let window_renderer = lock_renderer(&self.window_renderer)?;
+        let img = image_renderer.render(frame, images).await;
         window_renderer
-            .render(&image_renderer.render(frame, images).await)
-            .map_err(|x| RenderingError::SurfaceError(x))
+            .render(&img)
+            .map_err(|x| RenderingError::SurfaceError(x))?;
+        Ok(img)
     }
 }
 

@@ -4,7 +4,7 @@ use crate::{
     signals::{EncodeVideoSignal, UpdateMediaResourcesSignal},
 };
 use std::{
-    sync::{mpsc::Receiver, Arc, Mutex},
+    sync::{mpsc::Receiver, Arc, RwLock},
     thread,
     time::Instant,
 };
@@ -23,7 +23,7 @@ mod shader_structs;
 mod texture;
 
 pub fn run(
-    app_data: Arc<Mutex<AppData>>,
+    app_data: Arc<RwLock<AppData>>,
     update_media_resources_signal_rx: Receiver<UpdateMediaResourcesSignal>,
     encode_video_signal_rx: Receiver<EncodeVideoSignal>,
 ) {
@@ -38,7 +38,7 @@ pub fn run(
         .unwrap();
 
     let renderers = {
-        let app_data = app_data.lock().unwrap();
+        let app_data = app_data.read().unwrap();
         Arc::new(pollster::block_on(Renderers::new(
             window,
             &app_data.media_resources.images,
@@ -47,6 +47,7 @@ pub fn run(
     };
 
     let mut last_frame_update = Instant::now();
+    let mut latest_image = None;
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
@@ -76,7 +77,7 @@ pub fn run(
                     }
                     if let Ok(_) = update_media_resources_signal_rx.try_recv() {
                         if let Ok(mut image_renderer) = renderers.image_renderer.try_lock() {
-                            let app_data = app_data.lock().unwrap();
+                            let app_data = app_data.read().unwrap();
                             image_renderer
                                 .refresh_texture_pipeline(&app_data.media_resources.images);
                         }
@@ -91,7 +92,7 @@ pub fn run(
                     let app_data = app_data.clone();
                     thread::spawn(move || {
                         let image_renderer = renderer.image_renderer.lock().unwrap();
-                        let app_data = app_data.lock().unwrap();
+                        let app_data = app_data.read().unwrap();
                         pollster::block_on(image_renderer.encode(
                             &app_data.frames,
                             &app_data.media_resources.images,
@@ -106,17 +107,20 @@ pub fn run(
                     return;
                 }
 
-                let mut app_data = app_data.lock().unwrap();
-                if app_data.frames.len() == 0 {
-                    return;
-                }
+                let res = {
+                    let app_data = app_data.read().unwrap();
+                    if app_data.frames.len() == 0 {
+                        return;
+                    }
+                    pollster::block_on(renderers.render(
+                        &app_data.frames[app_data.frame],
+                        &app_data.media_resources.images,
+                    ))
+                };
 
-                match pollster::block_on(renderers.render(
-                    &app_data.frames[app_data.frame],
-                    &app_data.media_resources.images,
-                )) {
+                match res {
                     // rendered fine, no problems
-                    Ok(_) => {}
+                    Ok(img) => latest_image = Some(img),
 
                     // Reconfigure the surface if it's lost or outdated
                     Err(RenderingError::SurfaceError(
@@ -138,9 +142,38 @@ pub fn run(
                     }
 
                     // one or more of the renderers is busy
-                    Err(RenderingError::RendererLockError) => return,
+                    Err(RenderingError::RendererLockError) => {
+                        // try to just render the window with the latest image, if it exists
+                        match (latest_image.as_ref(), renderers.window_renderer.try_lock()) {
+                            (Some(latest_image), Ok(mut window_renderer)) => {
+                                match window_renderer.render(latest_image) {
+                                    Ok(_) => {}
+                                    // Reconfigure the surface if it's lost or outdated
+                                    Err(
+                                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
+                                    ) => {
+                                        let size = window_renderer.size();
+                                        window_renderer.resize(size);
+                                    }
+
+                                    // The system is out of memory, we should probably quit
+                                    Err(wgpu::SurfaceError::OutOfMemory) => {
+                                        *control_flow = ControlFlow::Exit
+                                    }
+
+                                    // idk
+                                    Err(wgpu::SurfaceError::Timeout) => {
+                                        log::warn!("Surface timeout")
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                        return
+                    }
                 };
 
+                let mut app_data = app_data.write().unwrap();
                 // advance frames, if there are frames remaining, and we're playing, and it's been long
                 // enough since the last frame update.
                 if app_data.frame >= app_data.frames.len() - 1 {

@@ -1,6 +1,6 @@
 use crate::{
     app_data::{AppData, MediaResources},
-    signals::{UpdateMediaResourcesSignal, EncodeVideoSignal},
+    signals::{EncodeVideoSignal, UpdateMediaResourcesSignal},
 };
 use anyhow::{anyhow, Result};
 use image::{codecs::png::PngEncoder, DynamicImage, ImageEncoder};
@@ -10,7 +10,7 @@ use std::{
     fmt::Debug,
     fs::File,
     io::Cursor,
-    sync::{mpsc::Sender, Arc, Mutex},
+    sync::{mpsc::Sender, Arc, RwLock},
 };
 
 fn errstr(e: impl Debug) -> String {
@@ -23,17 +23,17 @@ fn anyhow(e: impl Debug) -> anyhow::Error {
 
 #[tauri::command]
 pub fn add_frames(
-    data: tauri::State<Arc<Mutex<AppData>>>,
+    data: tauri::State<Arc<RwLock<AppData>>>,
     mut frames: Vec<Vec<Value>>,
 ) -> Result<(), String> {
-    let mut data = data.lock().map_err(errstr)?;
+    let mut data = data.write().map_err(errstr)?;
     data.frames.append(&mut frames);
     Ok(())
 }
 
 #[tauri::command]
 pub fn update_media_resources(
-    app_data: tauri::State<Arc<Mutex<AppData>>>,
+    app_data: tauri::State<Arc<RwLock<AppData>>>,
     update_media_resources_signal_tx: tauri::State<Sender<UpdateMediaResourcesSignal>>,
     res: Vec<(u64, String)>,
     fps: usize,
@@ -75,7 +75,7 @@ pub fn update_media_resources(
             .map(|(id, path)| path_to_resource(path).map(|i| (id, i)))
             .collect();
 
-        let mut app_data = app_data.lock().unwrap();
+        let mut app_data = app_data.write().unwrap();
         app_data.playing = false;
         app_data.frame = 0;
         app_data.frames = vec![];
@@ -93,22 +93,22 @@ pub fn update_media_resources(
 }
 
 #[tauri::command]
-pub fn play(data: tauri::State<Arc<Mutex<AppData>>>) -> Result<(), String> {
-    let mut data = data.lock().map_err(errstr)?;
+pub fn play(data: tauri::State<Arc<RwLock<AppData>>>) -> Result<(), String> {
+    let mut data = data.write().map_err(errstr)?;
     data.playing = true;
     Ok(())
 }
 
 #[tauri::command]
-pub fn pause(data: tauri::State<Arc<Mutex<AppData>>>) -> Result<(), String> {
-    let mut data = data.lock().map_err(errstr)?;
+pub fn pause(data: tauri::State<Arc<RwLock<AppData>>>) -> Result<(), String> {
+    let mut data = data.write().map_err(errstr)?;
     data.playing = false;
     Ok(())
 }
 
 #[tauri::command]
-pub fn stop(data: tauri::State<Arc<Mutex<AppData>>>) -> Result<(), String> {
-    let mut data = data.lock().map_err(errstr)?;
+pub fn stop(data: tauri::State<Arc<RwLock<AppData>>>) -> Result<(), String> {
+    let mut data = data.write().map_err(errstr)?;
     data.playing = false;
     data.frame = 0;
     Ok(())

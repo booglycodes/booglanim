@@ -146,6 +146,7 @@ document.getElementById('build')?.addEventListener('click', async () => {
     frameCounter.textContent = "building frames..."
     await new Promise(x => setTimeout(x, 0))
     let frames = []
+    lastFrame = Infinity
     while (frame < lastFrame) {
         frames.push(structuredClone(world.things))
         lastFrame = worldTick()
@@ -172,19 +173,23 @@ document.getElementById('export')?.addEventListener('click', async () => {
         alert("you need to finish building before you can 'export'")
         return
     }
-
+    
     let filePath = await save()
-    await invoke('export', { path : filePath! })
+    if (filePath?.endsWith('.mp4')) {
+        await invoke('export', { path : filePath! })
+    } else {
+        alert('invalid filepath, must end with .mp4')
+    }
 })
 
 import { listen } from '@tauri-apps/api/event'
 
 listen('encoded-frame', (event) => {
-    let frameCounter: HTMLElement = document.getElementById('status')!
+        let frameCounter: HTMLElement = document.getElementById('status')!
     let frame = event.payload as number + 1;
     if (frame === lastFrame) {
         frameCounter.textContent = "finished rendering video!"
     } else {
         frameCounter.textContent = (event.payload as number + 1).toString() + " frame(s) out of " + lastFrame + " completed"
-    }  
+    }
 })
