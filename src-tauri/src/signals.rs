@@ -6,3 +6,8 @@ pub struct EncodeVideoSignal {
 }
 
 pub struct UpdateMediaResourcesSignal;
+
+pub struct DisplaySignal {
+    pub playing : bool,
+    pub frame : Option<usize>
+}

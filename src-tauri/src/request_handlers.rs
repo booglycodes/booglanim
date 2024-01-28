@@ -1,8 +1,8 @@
 use crate::{
     app_data::{AppData, MediaResources},
-    signals::{EncodeVideoSignal, UpdateMediaResourcesSignal},
+    signals::{DisplaySignal, EncodeVideoSignal, UpdateMediaResourcesSignal},
 };
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use image::{codecs::png::PngEncoder, DynamicImage, ImageEncoder};
 use serde_json::Value;
 use std::{
@@ -10,15 +10,12 @@ use std::{
     fmt::Debug,
     fs::File,
     io::Cursor,
+    iter,
     sync::{mpsc::Sender, Arc, RwLock},
 };
 
 fn errstr(e: impl Debug) -> String {
     format!("{:?}", e)
-}
-
-fn anyhow(e: impl Debug) -> anyhow::Error {
-    anyhow!(errstr(e))
 }
 
 #[tauri::command]
@@ -42,14 +39,16 @@ pub fn update_media_resources(
         let supported_image_types = [".png", ".bmp", ".jpg", ".jpeg", ".webp"];
         let path_to_resource = |path: String| -> Result<DynamicImage> {
             let pathbuf = dirs::home_dir().unwrap().join(&path);
+
             if path.ends_with(".json") {
-                let json: HashMap<String, serde_json::Value> =
-                    serde_json::from_reader(File::open(pathbuf)?)?;
+                let json: HashMap<String, serde_json::Value> = serde_json::from_reader(
+                    File::open(pathbuf).with_context(|| format!("can't open {}", path))?,
+                )?;
                 let img_data = json
                     .get("img")
-                    .ok_or(anyhow("missing image resource"))?
+                    .ok_or(anyhow!("missing image resource"))?
                     .as_str()
-                    .ok_or(anyhow("image resource isn't a string"))?;
+                    .ok_or(anyhow!("image resource isn't a string"))?;
                 let base64 = base64_simd::STANDARD;
                 let img_data_decoded = base64.decode_to_vec(img_data)?;
                 Ok(image::load(
@@ -60,12 +59,16 @@ pub fn update_media_resources(
                 .into_iter()
                 .any(|ext| path.ends_with(ext))
             {
-                Ok(image::open(pathbuf)?)
+                Ok(image::open(pathbuf).with_context(|| format!("can't open {}", path))?)
             } else {
-                Err(anyhow::anyhow!(
+                Err(anyhow!(
                     "File extension {:?} not recognized. Should be one of {:?}",
                     pathbuf.extension(),
                     supported_image_types
+                        .iter()
+                        .cloned()
+                        .chain(iter::once(".json"))
+                        .collect::<Vec<&str>>()
                 ))
             }
         };
@@ -86,32 +89,39 @@ pub fn update_media_resources(
         app_data.fps = fps;
         update_media_resources_signal_tx
             .send(UpdateMediaResourcesSignal)
-            .unwrap();
-        Ok(())
+            .map_err(|e| anyhow!(errstr(e)))
     })()
     .map_err(errstr)
 }
 
 #[tauri::command]
-pub fn play(data: tauri::State<Arc<RwLock<AppData>>>) -> Result<(), String> {
-    let mut data = data.write().map_err(errstr)?;
-    data.playing = true;
-    Ok(())
+pub fn play(display_signal_tx: tauri::State<Sender<DisplaySignal>>) -> Result<(), String> {
+    display_signal_tx
+        .send(DisplaySignal {
+            playing: true,
+            frame: None,
+        })
+        .map_err(errstr)
 }
 
 #[tauri::command]
-pub fn pause(data: tauri::State<Arc<RwLock<AppData>>>) -> Result<(), String> {
-    let mut data = data.write().map_err(errstr)?;
-    data.playing = false;
-    Ok(())
+pub fn pause(display_signal_tx: tauri::State<Sender<DisplaySignal>>) -> Result<(), String> {
+    display_signal_tx
+        .send(DisplaySignal {
+            playing: false,
+            frame: None,
+        })
+        .map_err(errstr)
 }
 
 #[tauri::command]
-pub fn stop(data: tauri::State<Arc<RwLock<AppData>>>) -> Result<(), String> {
-    let mut data = data.write().map_err(errstr)?;
-    data.playing = false;
-    data.frame = 0;
-    Ok(())
+pub fn stop(display_signal_tx: tauri::State<Sender<DisplaySignal>>) -> Result<(), String> {
+    display_signal_tx
+        .send(DisplaySignal {
+            playing: false,
+            frame: Some(0),
+        })
+        .map_err(errstr)
 }
 
 #[tauri::command]
@@ -122,8 +132,7 @@ pub fn export(
 ) -> Result<(), String> {
     encode_video_signal_tx
         .send(EncodeVideoSignal { app_handle, path })
-        .unwrap();
-    Ok(())
+        .map_err(errstr)
 }
 
 #[tauri::command]

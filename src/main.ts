@@ -128,57 +128,74 @@ function typescriptToEvalableJavascript(program: string) {
 let finishedBuild = false
 let lastFrame = Infinity
 document.getElementById('build')?.addEventListener('click', async () => {
-    frame = 0
-    finishedBuild = false
     let frameCounter: HTMLElement = document.getElementById('status')!
-    frameCounter.textContent = "building - running editor code..."
-    if (!runEditorCode()) {
-        alert("Your code doesn't compile, can't make the video")
-        return
+    try {
+        frame = 0
+        finishedBuild = false
+        frameCounter.textContent = "building - running editor code..."
+        if (!runEditorCode()) {
+            alert("Your code doesn't compile, can't make the video")
+            return
+        }
+    
+        while (runningEditorCode) {
+            await new Promise(x => setTimeout(x, 100))
+        }
+    
+        frameCounter.textContent = "building - updating media resources..."
+        await invoke('update_media_resources', { res: world.res.serialize(), fps : world.fps })
+        frameCounter.textContent = "building frames..."
+        await new Promise(x => setTimeout(x, 0))
+        let frames = []
+        lastFrame = Infinity
+        while (frame < lastFrame) {
+            frames.push(structuredClone(world.things))
+            lastFrame = worldTick()
+        }
+        frameCounter.textContent = "sending frames..."
+        await invoke('add_frames', {frames : frames})
+        frameCounter.textContent = "build succeeded ✅"
+        finishedBuild = true
+    } catch (e) {
+        frameCounter.textContent = "build failed ❌"
+        alert("error: " + e)
     }
-
-    while (runningEditorCode) {
-        await new Promise(x => setTimeout(x, 100))
-    }
-
-    frameCounter.textContent = "building - updating media resources..."
-    await invoke('update_media_resources', { res: world.res.serialize(), fps : world.fps })
-    frameCounter.textContent = "building frames..."
-    await new Promise(x => setTimeout(x, 0))
-    let frames = []
-    lastFrame = Infinity
-    while (frame < lastFrame) {
-        frames.push(structuredClone(world.things))
-        lastFrame = worldTick()
-    }
-    frameCounter.textContent = "sending frames..."
-    await invoke('add_frames', {frames : frames})
-    frameCounter.textContent = "build complete!"
-    finishedBuild = true
 })
 
 for (const button of ['play', 'pause', 'stop']) {
     document.getElementById(button)?.addEventListener('click', async () => {
-        await invoke(button)
+        try {
+            await invoke(button)
+        } catch (e) {
+            alert("error: " + e)
+        }   
     })
 }
 
 document.getElementById('save')?.addEventListener('click', async () => {
-    let filePath = await save()
-    writeTextFile(filePath!, editor.getValue())
+    try {
+        let filePath = await save()
+        writeTextFile(filePath!, editor.getValue())
+    } catch (e) {
+        alert("error: " + e)
+    }   
 })
 
 document.getElementById('export')?.addEventListener('click', async () => {
-    if (!finishedBuild) {
-        alert("you need to finish building before you can 'export'")
-        return
-    }
-    
-    let filePath = await save()
-    if (filePath?.endsWith('.mp4')) {
-        await invoke('export', { path : filePath! })
-    } else {
-        alert('invalid filepath, must end with .mp4')
+    try {
+        if (!finishedBuild) {
+            alert("you need to finish building before you can 'export'")
+            return
+        }
+        
+        let filePath = await save()
+        if (filePath?.endsWith('.mp4')) {
+            await invoke('export', { path : filePath! })
+        } else {
+            alert('invalid filepath, must end with .mp4')
+        }
+    } catch (e) {
+        alert("error: " + e)
     }
 })
 

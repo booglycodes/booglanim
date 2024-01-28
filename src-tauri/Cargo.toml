@@ -37,8 +37,7 @@ itertools = "0.11.0"
 futures-intrusive = "0.5.0"
 # using this version of video-rs because needed to update ffmpeg-next dependency
 # from 6.0.0 -> 6.1.0 to compile on windows.
-video-rs = { git = 'https://github.com/booglycodes/video-rs.git', features = ["ndarray"] }
-ndarray = "0.15.6"
+video-rs = { git = 'https://github.com/booglycodes/video-rs.git' }
 lyon = "1.0.1"
 
 

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::iter;
-use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 
 use super::pipelines::{screen_pipeline, texture_pipeline, triangle_pipeline};
@@ -9,10 +8,7 @@ use super::shader_structs::TextureVertex;
 use super::texture::Texture;
 use image::{DynamicImage, ImageBuffer, Rgba};
 use serde_json::Value;
-use video_rs::{Encoder, EncoderSettings, Locator, Time};
 use wgpu::{BindGroup, BindGroupLayout, RenderPipeline, TextureFormat, TextureView};
-
-use ndarray::{Array3, Dim};
 
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
@@ -21,7 +17,6 @@ use winit::window::Window;
 pub struct Renderers {
     pub image_renderer: Mutex<ImageRenderer>,
     pub window_renderer: Mutex<WindowRenderer>,
-    pub latest_image: Option<ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
 }
 
 pub enum RenderingError {
@@ -49,10 +44,10 @@ impl Renderers {
         Self {
             window_renderer: Mutex::new(window_renderer),
             image_renderer: Mutex::new(image_renderer),
-            latest_image: None,
         }
     }
 
+    /// renders a json frame to the window, returning the image that was rendered
     pub async fn render(
         &self,
         frame: &Vec<Value>,
@@ -484,43 +479,12 @@ impl ImageRenderer {
         buffer
     }
 
-    pub async fn encode(
-        &self,
-        frames: &Vec<Vec<Value>>,
-        images: &HashMap<u64, DynamicImage>,
-        fps: usize,
-        mut on_frame_complete: impl FnMut(usize) -> (),
-        path: String,
-    ) {
-        let duration = Time::from_nth_of_a_second(fps);
-        let mut position = Time::zero();
-
-        let destination: Locator = PathBuf::from(path).into();
-        let settings = EncoderSettings::for_h264_yuv420p(
-            self.size.width as usize,
-            self.size.height as usize,
-            true,
-        );
-        let mut encoder = Encoder::new(&destination, settings).unwrap();
-        for (frame_index, frame) in frames.iter().enumerate().into_iter() {
-            let frame = self.render(frame, images).await;
-            position = position.aligned_with(&duration).add();
-            let mut buf = frame.as_raw().clone();
-            let mut i = 0;
-            buf.retain(|_| {
-                i += 1;
-                i % 4 != 0
-            });
-            let shape = Dim((self.size.height as usize, self.size.width as usize, 3));
-            let frame = Array3::from_shape_vec(shape, buf).unwrap();
-            encoder.encode(&frame, &position).unwrap();
-            on_frame_complete(frame_index);
-        }
-        encoder.finish().unwrap();
-    }
-
     pub fn refresh_texture_pipeline(&mut self, images: &HashMap<u64, DynamicImage>) {
         (self.texture_pipeline, self.texture_pipeline_bind_groups) =
             texture_pipeline(&self.device, &self.queue, self.format, images);
+    }
+
+    pub fn size(&self) -> PhysicalSize<u32> {
+        self.size
     }
 }

@@ -1,7 +1,7 @@
-use self::renderers::{Renderers, RenderingError};
+use self::{renderers::{Renderers, RenderingError}, video::export_video};
 use crate::{
     app_data::AppData,
-    signals::{EncodeVideoSignal, UpdateMediaResourcesSignal},
+    signals::{DisplaySignal, EncodeVideoSignal, UpdateMediaResourcesSignal},
 };
 use std::{
     sync::{mpsc::Receiver, Arc, RwLock},
@@ -21,16 +21,17 @@ mod render_data;
 mod renderers;
 mod shader_structs;
 mod texture;
+mod video;
 
 pub fn run(
     app_data: Arc<RwLock<AppData>>,
     update_media_resources_signal_rx: Receiver<UpdateMediaResourcesSignal>,
     encode_video_signal_rx: Receiver<EncodeVideoSignal>,
+    display_signal_rx : Receiver<DisplaySignal>
 ) {
     // wait for media resources to be updated before spawning the rendering window
     update_media_resources_signal_rx.recv().unwrap();
 
-    env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("booglanim")
@@ -93,7 +94,8 @@ pub fn run(
                     thread::spawn(move || {
                         let image_renderer = renderer.image_renderer.lock().unwrap();
                         let app_data = app_data.read().unwrap();
-                        pollster::block_on(image_renderer.encode(
+                        pollster::block_on(export_video(
+                            &image_renderer,
                             &app_data.frames,
                             &app_data.media_resources.images,
                             app_data.fps,
@@ -138,7 +140,7 @@ pub fn run(
 
                     // idk
                     Err(RenderingError::SurfaceError(wgpu::SurfaceError::Timeout)) => {
-                        log::warn!("Surface timeout")
+                        println!("surface timeout")
                     }
 
                     // one or more of the renderers is busy
@@ -163,7 +165,7 @@ pub fn run(
 
                                     // idk
                                     Err(wgpu::SurfaceError::Timeout) => {
-                                        log::warn!("Surface timeout")
+                                        println!("surface timeout")
                                     }
                                 }
                             }
@@ -172,10 +174,14 @@ pub fn run(
                         return
                     }
                 };
-
+               
                 let mut app_data = app_data.write().unwrap();
-                // advance frames, if there are frames remaining, and we're playing, and it's been long
-                // enough since the last frame update.
+                if let Ok(display_signal) = display_signal_rx.try_recv() {
+                    app_data.playing = display_signal.playing;
+                    if let Some(frame) = display_signal.frame {
+                        app_data.frame = frame;
+                    }
+                }
                 if app_data.frame >= app_data.frames.len() - 1 {
                     app_data.frame = app_data.frames.len() - 1;
                     app_data.playing = false;
