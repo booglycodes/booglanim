@@ -7,7 +7,7 @@ export interface Obj {
     pos: Point,
     layer: number,
     subrect: {
-        topLeft: Point,
+        xy: Point,
         wh: Point
     }
     visible: boolean
@@ -20,7 +20,7 @@ export async function loadObj(path : string, res : Resources) : Promise<Obj> {
         pos: pt(0, 0),
         layer: 0,
         subrect: {
-            topLeft: pt(0, 0),
+            xy: pt(0, 0),
             wh: pt(1, 1)
         },
         visible: true

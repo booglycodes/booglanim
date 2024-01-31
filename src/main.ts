@@ -53,7 +53,7 @@ function worldTick() {
 }
 
 // sources we can import and their names
-let booglyStudioImports = [
+let booglanimImports = [
     ['anim', anim_src],
     ['character', character_src],
     ['obj', obj_src],
@@ -62,16 +62,16 @@ let booglyStudioImports = [
     ['world', world_src]
 ]
 
-// create the monaco editor and add the libraries from booglyStudioImports to it
+// create the monaco editor and add the libraries from booglanimImports to it
 let editor = monaco.editor.create(document.getElementById('container')!, {
     value: editor_default,
     language: 'typescript',
     automaticLayout: true,
     theme: 'vs-dark',
 })
-for (const booglyStudioImport of booglyStudioImports) {
-    let name = booglyStudioImport[0]
-    let src = booglyStudioImport[1]
+for (const booglanimImport of booglanimImports) {
+    let name = booglanimImport[0]
+    let src = booglanimImport[1]
     monaco.languages.typescript.typescriptDefaults.addExtraLib(
         `declare module '@booglanim/${name}' { ${src} }`
     );
@@ -137,23 +137,26 @@ document.getElementById('build')?.addEventListener('click', async () => {
             alert("Your code doesn't compile, can't make the video")
             return
         }
-    
+
         while (runningEditorCode) {
             await new Promise(x => setTimeout(x, 100))
         }
-    
+
         frameCounter.textContent = "building - updating media resources..."
-        await invoke('update_media_resources', { res: world.res.serialize(), fps : world.fps })
+        await invoke('update_media_resources', { res: world.res.serialize(), fps: world.fps })
         frameCounter.textContent = "building frames..."
         await new Promise(x => setTimeout(x, 0))
         let frames = []
         lastFrame = Infinity
         while (frame < lastFrame) {
-            frames.push(structuredClone(world.things))
+            frames.push({
+                things: structuredClone(world.things),
+                settings: structuredClone(world.settings)
+            })
             lastFrame = worldTick()
         }
         frameCounter.textContent = "sending frames..."
-        await invoke('add_frames', {frames : frames})
+        await invoke('add_frames', { frames: frames })
         frameCounter.textContent = "build succeeded ✅"
         finishedBuild = true
     } catch (e) {
@@ -168,7 +171,7 @@ for (const button of ['play', 'pause', 'stop']) {
             await invoke(button)
         } catch (e) {
             alert("error: " + e)
-        }   
+        }
     })
 }
 
@@ -178,7 +181,7 @@ document.getElementById('save')?.addEventListener('click', async () => {
         writeTextFile(filePath!, editor.getValue())
     } catch (e) {
         alert("error: " + e)
-    }   
+    }
 })
 
 document.getElementById('export')?.addEventListener('click', async () => {
@@ -187,10 +190,10 @@ document.getElementById('export')?.addEventListener('click', async () => {
             alert("you need to finish building before you can 'export'")
             return
         }
-        
+
         let filePath = await save()
         if (filePath?.endsWith('.mp4')) {
-            await invoke('export', { path : filePath! })
+            await invoke('export', { path: filePath! })
         } else {
             alert('invalid filepath, must end with .mp4')
         }
@@ -202,7 +205,7 @@ document.getElementById('export')?.addEventListener('click', async () => {
 import { listen } from '@tauri-apps/api/event'
 
 listen('encoded-frame', (event) => {
-        let frameCounter: HTMLElement = document.getElementById('status')!
+    let frameCounter: HTMLElement = document.getElementById('status')!
     let frame = event.payload as number + 1;
     if (frame === lastFrame) {
         frameCounter.textContent = "finished rendering video!"

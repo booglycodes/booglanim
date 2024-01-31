@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::color::Color;
+
 use super::shader_structs::{ColorVertex, TextureVertex};
 
 use bytemuck::Pod;
@@ -163,7 +165,7 @@ impl<'a> RenderData<'a> {
                     limbs.push((
                         l,
                         rgb(limb.get("color")?)?,
-                        limb.get("thickness")?.as_f64()? as f32,
+                        limb.get("thickness")?.as_f64()? as f32 * scale,
                     ));
                 }
 
@@ -173,6 +175,7 @@ impl<'a> RenderData<'a> {
                 let triangle_vertices_index = triangle_vertices.len();
                 let triangle_indices_index = triangle_indices.len();
                 for (limb, (r, g, b), thickness) in limbs {
+                    let color = Color::new(r, g, b);
                     fn pt((x, y): (f32, f32)) -> Point {
                         point(x, y)
                     }
@@ -202,7 +205,7 @@ impl<'a> RenderData<'a> {
                             &mut BuffersBuilder::new(&mut geometry, |vertex: StrokeVertex| {
                                 ColorVertex {
                                     position: vertex.position().to_array(),
-                                    color: [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0],
+                                    color: color.to_linear_rgb(),
                                 }
                             }),
                         )

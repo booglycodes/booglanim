@@ -125,11 +125,13 @@ window.addEventListener("keyup", async (e) => {
         })
         console.log(imgPath)
         let base64Img = await invoke('to_base64_png', { path : imgPath })
+        character.limbs.forEach(limb => limb.thickness = 0.1)
         writeTextFile(filePath!, JSON.stringify({
             img: base64Img,
             limbs: character.limbs,
-            scale: character.scale
+            scale: 1
         }))
+        character.limbs.forEach(limb => limb.thickness = 10)
     }
     draw()
 })

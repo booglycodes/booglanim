@@ -10,6 +10,8 @@ mod app_data;
 mod renderer;
 mod signals;
 mod request_handlers;
+mod frame;
+mod color;
 
 /// There are 2 main parts of this app, the wgpu renderer and the tauri applicaton.
 ///

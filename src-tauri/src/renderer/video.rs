@@ -8,13 +8,42 @@ use video_rs::{
     },
     Encoder, EncoderSettings, Locator, Time,
 };
+use ffmpeg_next as ffmpeg;
+use anyhow::{Context, Result};
+
 use winit::dpi::PhysicalSize;
+
+use crate::frame::FrameDescription;
 
 use super::renderers::ImageRenderer;
 
-pub async fn export_video(
+async fn export(
     image_renderer: &ImageRenderer,
     frames: &Vec<Vec<Value>>,
+    images: &HashMap<u64, DynamicImage>,
+    fps: usize,
+    mut on_frame_complete: impl FnMut(usize) -> (),
+    path: String,
+) -> Result<()> {
+    let mut output = ffmpeg::format::output(&path)?;
+    let mut options = ffmpeg::Dictionary::new();
+    // Set H264 encoder to the medium preset.
+    options.set("preset", "medium");
+    // Tune for low latency
+    options.set("tune", "zerolatency");
+    let codec = ffmpeg::encoder::find(ffmpeg::codec::Id::H264).context("could not find h264 codec")?;
+    output.add_stream(codec)?;
+    
+    for (frame_index, frame) in frames.iter().enumerate().into_iter() {
+
+    }
+
+    Ok(())
+}
+
+pub async fn export_video(
+    image_renderer: &ImageRenderer,
+    frames: &Vec<FrameDescription>,
     images: &HashMap<u64, DynamicImage>,
     fps: usize,
     mut on_frame_complete: impl FnMut(usize) -> (),

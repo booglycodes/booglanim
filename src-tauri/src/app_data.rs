@@ -1,7 +1,7 @@
 use image::DynamicImage;
-use serde_json::Value;
 use std::collections::HashMap;
 
+use crate::frame::FrameDescription;
 
 pub struct Audio;
 
@@ -14,7 +14,7 @@ pub struct MediaResources {
 pub struct AppData {
     pub playing: bool,
     pub frame: usize,
-    pub frames: Vec<Vec<Value>>,
+    pub frames: Vec<FrameDescription>,
     pub media_resources: MediaResources,
     pub fps: usize,
 }

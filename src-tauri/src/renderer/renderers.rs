@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::iter;
 use std::sync::{Mutex, MutexGuard};
 
+use crate::frame::FrameDescription;
+
 use super::pipelines::{screen_pipeline, texture_pipeline, triangle_pipeline};
 use super::render_data::RenderData;
 use super::shader_structs::TextureVertex;
 use super::texture::Texture;
 use image::{DynamicImage, ImageBuffer, Rgba};
-use serde_json::Value;
 use wgpu::{BindGroup, BindGroupLayout, RenderPipeline, TextureFormat, TextureView};
 
 use wgpu::util::DeviceExt;
@@ -50,7 +51,7 @@ impl Renderers {
     /// renders a json frame to the window, returning the image that was rendered
     pub async fn render(
         &self,
-        frame: &Vec<Value>,
+        frame: &FrameDescription,
         images: &HashMap<u64, DynamicImage>,
     ) -> Result<ImageBuffer<image::Rgba<u8>, Vec<u8>>, RenderingError> {
         fn lock_renderer<'a, T>(
@@ -359,7 +360,7 @@ impl ImageRenderer {
 
     pub async fn render(
         &self,
-        frame: &Vec<Value>,
+        frame: &FrameDescription,
         images: &HashMap<u64, DynamicImage>,
     ) -> ImageBuffer<image::Rgba<u8>, Vec<u8>> {
         let mut encoder = self
@@ -370,7 +371,7 @@ impl ImageRenderer {
         let render_data = RenderData::new(
             &self.device,
             self.size,
-            frame,
+            &frame.things,
             images,
             &self.triangle_pipeline,
             &self.texture_pipeline,
@@ -397,7 +398,7 @@ impl ImageRenderer {
                     view: &self.texture_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(frame.settings.bg.to_wgpu_color()),
                         store: true,
                     },
                 })],

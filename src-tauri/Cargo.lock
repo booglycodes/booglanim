@@ -306,6 +306,7 @@ dependencies = [
  "bytemuck",
  "dirs",
  "env_logger",
+ "ffmpeg-next",
  "futures-intrusive",
  "image",
  "itertools",

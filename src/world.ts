@@ -7,6 +7,7 @@ export type Tasks = (((frame: number) => void) | Run | Run[])[]
 export interface World {
     res: Resources
     things: (Character | Obj)[],
+    settings: any, 
     tasks: Tasks,
     fps: number
 }

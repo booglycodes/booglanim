@@ -39,6 +39,7 @@ futures-intrusive = "0.5.0"
 # from 6.0.0 -> 6.1.0 to compile on windows.
 video-rs = { git = 'https://github.com/booglycodes/video-rs.git' }
 lyon = "1.0.1"
+ffmpeg-next = "6.1.1"
 
 
 [features]

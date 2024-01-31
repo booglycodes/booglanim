@@ -1,10 +1,9 @@
 use crate::{
-    app_data::{AppData, MediaResources},
-    signals::{DisplaySignal, EncodeVideoSignal, UpdateMediaResourcesSignal},
+    app_data::{AppData, MediaResources}, frame::FrameDescription, signals::{DisplaySignal, EncodeVideoSignal, UpdateMediaResourcesSignal}
 };
 use anyhow::{anyhow, Context, Result};
 use image::{codecs::png::PngEncoder, DynamicImage, ImageEncoder};
-use serde_json::Value;
+
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -21,7 +20,7 @@ fn errstr(e: impl Debug) -> String {
 #[tauri::command]
 pub fn add_frames(
     data: tauri::State<Arc<RwLock<AppData>>>,
-    mut frames: Vec<Vec<Value>>,
+    mut frames: Vec<FrameDescription>,
 ) -> Result<(), String> {
     let mut data = data.write().map_err(errstr)?;
     data.frames.append(&mut frames);
