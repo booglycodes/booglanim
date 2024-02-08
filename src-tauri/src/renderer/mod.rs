@@ -1,10 +1,16 @@
-use self::{renderers::{Renderers, RenderingError}, video::export_video};
 use crate::{
-    app_data::AppData,
-    signals::{DisplaySignal, EncodeVideoSignal, UpdateMediaResourcesSignal},
+    interface::VideoDescription,
+    signals::{ExportVideo, SetFrame, Signal},
 };
+
+use self::{
+    renderers::{Renderers, RenderingError},
+    video::export_video,
+};
+
+use image::{ImageBuffer, Rgba};
 use std::{
-    sync::{mpsc::Receiver, Arc, RwLock},
+    sync::{mpsc::Receiver, Arc, Mutex},
     thread,
     time::Instant,
 };
@@ -23,14 +29,23 @@ mod shader_structs;
 mod texture;
 mod video;
 
-pub fn run(
-    app_data: Arc<RwLock<AppData>>,
-    update_media_resources_signal_rx: Receiver<UpdateMediaResourcesSignal>,
-    encode_video_signal_rx: Receiver<EncodeVideoSignal>,
-    display_signal_rx : Receiver<DisplaySignal>
-) {
+const RESOLUTION: (u32, u32) = (1920, 1080);
+
+pub fn run(signal_rx: Receiver<Signal>) {
+    let (width, height) = RESOLUTION;
+    let buf = vec![0; width as usize * height as usize];
+    let black = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, buf).unwrap();
+
     // wait for media resources to be updated before spawning the rendering window
-    update_media_resources_signal_rx.recv().unwrap();
+    let media_resources;
+    loop {
+        if let Signal::UpdateMediaResources(new_media_resources) =
+            signal_rx.recv().expect("sender closed!")
+        {
+            media_resources = new_media_resources;
+            break;
+        }
+    }
 
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
@@ -38,17 +53,23 @@ pub fn run(
         .build(&event_loop)
         .unwrap();
 
-    let renderers = {
-        let app_data = app_data.read().unwrap();
-        Arc::new(pollster::block_on(Renderers::new(
-            window,
-            &app_data.media_resources.images,
-            PhysicalSize::new(1920, 1080),
-        )))
-    };
+    let renderers = Arc::new(pollster::block_on(Renderers::new(
+        window,
+        &media_resources.images,
+        PhysicalSize::new(1920, 1080),
+    )));
 
     let mut last_frame_update = Instant::now();
     let mut latest_image = None;
+    let media_resources = Arc::new(Mutex::new(media_resources));
+    let video_description = Arc::new(Mutex::new(VideoDescription {
+        frames: Vec::new(),
+        sounds: Vec::new(),
+        fps: 16,
+    }));
+    let mut reverse = false;
+    let mut playing = true;
+    let mut frame = 0;
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
@@ -76,122 +97,140 @@ pub fn run(
                     if window_id != window_renderer.window().id() {
                         return;
                     }
-                    if let Ok(_) = update_media_resources_signal_rx.try_recv() {
-                        if let Ok(mut image_renderer) = renderers.image_renderer.try_lock() {
-                            let app_data = app_data.read().unwrap();
-                            image_renderer
-                                .refresh_texture_pipeline(&app_data.media_resources.images);
-                        }
-                        while let Ok(_) = update_media_resources_signal_rx.try_recv() {}
-                    }
                 }
 
-                // if we get a signal to encode video, encode in a new thread.
-                // this way we don't block and hang the event loop.
-                if let Ok(signal) = encode_video_signal_rx.try_recv() {
-                    let renderer = renderers.clone();
-                    let app_data = app_data.clone();
-                    thread::spawn(move || {
-                        let image_renderer = renderer.image_renderer.lock().unwrap();
-                        let app_data = app_data.read().unwrap();
-                        pollster::block_on(export_video(
-                            &image_renderer,
-                            &app_data.frames,
-                            &app_data.media_resources.images,
-                            app_data.fps,
-                            |frame| signal.app_handle.emit_all("encoded-frame", frame).unwrap(),
-                            signal.path,
-                        ));
-                    });
-                    while let Ok(_) = encode_video_signal_rx.try_recv() {}
-                    // renderer will be locked until video is encoded, so we return here to avoid getting stuck
-                    // when the code tries to render a frame below (it won't be able to until the above thread has completed).
-                    return;
+                while let Ok(signal) = signal_rx.try_recv() {
+                    match signal {
+                        Signal::ExportVideo(ExportVideo { app_handle, path }) => {
+                            let renderers = renderers.clone();
+                            let media_resources = media_resources.clone();
+                            let video_description = video_description.clone();
+                            thread::spawn(move || {
+                                if let (
+                                    Ok(image_renderer),
+                                    Ok(video_description),
+                                    Ok(media_resources),
+                                ) = (
+                                    renderers.image_renderer.try_lock(),
+                                    video_description.try_lock(),
+                                    media_resources.try_lock(),
+                                ) {
+                                    pollster::block_on(export_video(
+                                        &image_renderer,
+                                        &video_description.frames,
+                                        &media_resources.images,
+                                        video_description.fps,
+                                        |frame| {
+                                            app_handle.emit_all("encoded-frame", frame).unwrap()
+                                        },
+                                        path,
+                                    ));
+                                }
+                            });
+                        }
+                        Signal::SetPlayback(playback) => {
+                            reverse = playback.reverse;
+                            playing = playback.playing;
+                            if let Some(playback_frame) = playback.frame {
+                                if let Ok(video_description) = video_description.try_lock() {
+                                    frame = match playback_frame {
+                                        SetFrame::At(playback_frame) => playback_frame,
+                                        SetFrame::Forward(next) => {
+                                            (frame + next).min(video_description.frames.len())
+                                        }
+                                        SetFrame::Back(prev) => frame.saturating_sub(prev),
+                                    };
+                                }
+                            }
+                        }
+                        Signal::UpdateVideoDescription(new_video_description) => {
+                            if let Ok(mut video_description) = video_description.try_lock() {
+                                *video_description = new_video_description;
+                            }
+                        }
+                        Signal::UpdateMediaResources(new_media_resources) => {
+                            if let (Ok(mut image_renderer), Ok(mut media_resources)) = (
+                                renderers.image_renderer.try_lock(),
+                                media_resources.try_lock(),
+                            ) {
+                                *media_resources = new_media_resources;
+                                image_renderer.refresh_texture_pipeline(&media_resources.images);
+                            }
+                        }
+                    }
                 }
 
                 let res = {
-                    let app_data = app_data.read().unwrap();
-                    if app_data.frames.len() == 0 {
-                        return;
+                    if let (Ok(video_description), Ok(media_resources)) =
+                        (video_description.try_lock(), media_resources.try_lock())
+                    {
+                        let res = pollster::block_on(
+                            renderers
+                                .render(&video_description.frames[frame], &media_resources.images),
+                        );
+                        if frame >= video_description.frames.len() - 1 && !reverse {
+                            frame = video_description.frames.len() - 1;
+                            playing = false;
+                        }
+                        if frame == 0 && reverse {
+                            playing = false;
+                        }
+                        if playing
+                            && (Instant::now() - last_frame_update).as_secs_f64()
+                                > 1.0 / (video_description.fps as f64)
+                        {
+                            last_frame_update = Instant::now();
+                            if reverse {
+                                frame -= 1
+                            } else {
+                                frame += 1
+                            };
+                        }
+                        res
+                    } else {
+                        Err(RenderingError::RendererLockError)
                     }
-                    pollster::block_on(renderers.render(
-                        &app_data.frames[app_data.frame],
-                        &app_data.media_resources.images,
-                    ))
+                };
+
+                let res = match res {
+                    // rendered fine, no problems
+                    Ok(img) => {
+                        latest_image = Some(img);
+                        Ok(())
+                    }
+
+                    Err(RenderingError::SurfaceError(e)) => Err(e),
+
+                    // one or more of the renderers is busy
+                    Err(RenderingError::RendererLockError) => {
+                        // try to just render the window with the latest image, if it exists. Otherwise, just render a black screen.
+                        match latest_image.as_ref() {
+                            Some(latest_image) => renderers
+                                .window_renderer
+                                .try_lock()
+                                .unwrap()
+                                .render(latest_image),
+                            None => renderers.window_renderer.try_lock().unwrap().render(&black),
+                        }
+                    }
                 };
 
                 match res {
-                    // rendered fine, no problems
-                    Ok(img) => latest_image = Some(img),
-
+                    Ok(_) => {}
                     // Reconfigure the surface if it's lost or outdated
-                    Err(RenderingError::SurfaceError(
-                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                    )) => {
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                         let mut window_renderer = renderers.window_renderer.lock().unwrap();
                         let size = window_renderer.size();
                         window_renderer.resize(size);
                     }
 
                     // The system is out of memory, we should probably quit
-                    Err(RenderingError::SurfaceError(wgpu::SurfaceError::OutOfMemory)) => {
-                        *control_flow = ControlFlow::Exit
-                    }
+                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
 
                     // idk
-                    Err(RenderingError::SurfaceError(wgpu::SurfaceError::Timeout)) => {
+                    Err(wgpu::SurfaceError::Timeout) => {
                         println!("surface timeout")
                     }
-
-                    // one or more of the renderers is busy
-                    Err(RenderingError::RendererLockError) => {
-                        // try to just render the window with the latest image, if it exists
-                        match (latest_image.as_ref(), renderers.window_renderer.try_lock()) {
-                            (Some(latest_image), Ok(mut window_renderer)) => {
-                                match window_renderer.render(latest_image) {
-                                    Ok(_) => {}
-                                    // Reconfigure the surface if it's lost or outdated
-                                    Err(
-                                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                                    ) => {
-                                        let size = window_renderer.size();
-                                        window_renderer.resize(size);
-                                    }
-
-                                    // The system is out of memory, we should probably quit
-                                    Err(wgpu::SurfaceError::OutOfMemory) => {
-                                        *control_flow = ControlFlow::Exit
-                                    }
-
-                                    // idk
-                                    Err(wgpu::SurfaceError::Timeout) => {
-                                        println!("surface timeout")
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                        return
-                    }
-                };
-               
-                let mut app_data = app_data.write().unwrap();
-                if let Ok(display_signal) = display_signal_rx.try_recv() {
-                    app_data.playing = display_signal.playing;
-                    if let Some(frame) = display_signal.frame {
-                        app_data.frame = frame;
-                    }
-                }
-                if app_data.frame >= app_data.frames.len() - 1 {
-                    app_data.frame = app_data.frames.len() - 1;
-                    app_data.playing = false;
-                }
-                if app_data.playing
-                    && (Instant::now() - last_frame_update).as_secs_f64()
-                        > 1.0 / (app_data.fps as f64)
-                {
-                    app_data.frame += 1;
-                    last_frame_update = Instant::now();
                 }
             }
             Event::RedrawEventsCleared => {

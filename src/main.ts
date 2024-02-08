@@ -89,6 +89,7 @@ for (const booglanimImport of booglanimImports) {
 // running the async code, without completely blocking the thread.
 function runEditorCode() {
     eval(typescriptToEvalableJavascript(editor.getValue()))
+    console.log(monaco.editor.getModelMarkers({}))
     return true
 }
 

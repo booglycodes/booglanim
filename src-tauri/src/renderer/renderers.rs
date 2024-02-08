@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::iter;
 use std::sync::{Mutex, MutexGuard};
 
-use crate::frame::FrameDescription;
+use crate::interface::FrameDescription;
 
 use super::pipelines::{screen_pipeline, texture_pipeline, triangle_pipeline};
 use super::render_data::RenderData;
@@ -28,7 +28,7 @@ pub enum RenderingError {
 impl Renderers {
     pub async fn new(
         window: Window,
-        images: &HashMap<u64, DynamicImage>,
+        images: &HashMap<u32, DynamicImage>,
         size: PhysicalSize<u32>,
     ) -> Self {
         // The instance is a handle to our GPU
@@ -52,7 +52,7 @@ impl Renderers {
     pub async fn render(
         &self,
         frame: &FrameDescription,
-        images: &HashMap<u64, DynamicImage>,
+        images: &HashMap<u32, DynamicImage>,
     ) -> Result<ImageBuffer<image::Rgba<u8>, Vec<u8>>, RenderingError> {
         fn lock_renderer<'a, T>(
             renderer: &'a Mutex<T>,
@@ -295,7 +295,7 @@ pub struct ImageRenderer {
     queue: wgpu::Queue,
     size: winit::dpi::PhysicalSize<u32>,
     texture_pipeline: RenderPipeline,
-    texture_pipeline_bind_groups: HashMap<u64, BindGroup>,
+    texture_pipeline_bind_groups: HashMap<u32, BindGroup>,
     triangle_pipeline: RenderPipeline,
     texture_view: TextureView,
     texture: wgpu::Texture,
@@ -306,7 +306,7 @@ impl ImageRenderer {
     pub async fn new(
         instance: &wgpu::Instance,
         format: TextureFormat,
-        images: &HashMap<u64, DynamicImage>,
+        images: &HashMap<u32, DynamicImage>,
         size: PhysicalSize<u32>,
     ) -> Self {
         let adapter = instance
@@ -361,7 +361,7 @@ impl ImageRenderer {
     pub async fn render(
         &self,
         frame: &FrameDescription,
-        images: &HashMap<u64, DynamicImage>,
+        images: &HashMap<u32, DynamicImage>,
     ) -> ImageBuffer<image::Rgba<u8>, Vec<u8>> {
         let mut encoder = self
             .device
@@ -371,7 +371,7 @@ impl ImageRenderer {
         let render_data = RenderData::new(
             &self.device,
             self.size,
-            &frame.things,
+            &frame,
             images,
             &self.triangle_pipeline,
             &self.texture_pipeline,
@@ -480,7 +480,7 @@ impl ImageRenderer {
         buffer
     }
 
-    pub fn refresh_texture_pipeline(&mut self, images: &HashMap<u64, DynamicImage>) {
+    pub fn refresh_texture_pipeline(&mut self, images: &HashMap<u32, DynamicImage>) {
         (self.texture_pipeline, self.texture_pipeline_bind_groups) =
             texture_pipeline(&self.device, &self.queue, self.format, images);
     }

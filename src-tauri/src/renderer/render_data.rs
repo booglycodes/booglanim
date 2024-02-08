@@ -1,17 +1,17 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
-use crate::color::Color;
+use crate::interface::{FrameDescription, Object, Point};
 
 use super::shader_structs::{ColorVertex, TextureVertex};
 
 use bytemuck::Pod;
 use image::DynamicImage;
+use lyon::geom::euclid::{Point2D, UnknownUnit};
 use lyon::lyon_tessellation::{
     BuffersBuilder, LineCap, StrokeOptions, StrokeTessellator, StrokeVertex, VertexBuffers,
 };
-use lyon::math::{point, Point};
+use lyon::math::point;
 use lyon::path::Path;
-use serde_json::Value;
 use wgpu::{BindGroup, Device, RenderPipeline};
 
 use wgpu::{util::DeviceExt, Buffer};
@@ -46,20 +46,8 @@ fn slice_to_buffer<T: Pod>(
     })
 }
 
-fn character_relative_to_canvas(
-    p: (f32, f32),
-    scale: f32,
-    character: (f32, f32),
-    resolution_aspect_ratio: f32,
-) -> (f32, f32) {
-    (
-        scale * p.0 + character.0,
-        resolution_aspect_ratio * -scale * p.1 + character.1,
-    )
-}
-
-fn mid(a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
-    ((a.0 + b.0) * 0.5, (a.1 + b.1) * 0.5)
+fn mid(a: &Point, b: &Point) -> Point2D<f32, UnknownUnit> {
+    ((a.x + b.x) * 0.5, (a.y + b.y) * 0.5).into()
 }
 
 const RECT: &[u16; 6] = &[0, 1, 2, 0, 2, 3];
@@ -67,11 +55,11 @@ impl<'a> RenderData<'a> {
     pub fn new(
         device: &Device,
         resolution: PhysicalSize<u32>,
-        frame: &Vec<Value>,
-        images: &HashMap<u64, DynamicImage>,
+        frame: &FrameDescription,
+        images: &HashMap<u32, DynamicImage>,
         triangle_pipeline: &'a RenderPipeline,
         texture_pipeline: &'a RenderPipeline,
-        texture_pipeline_bind_groups: &'a HashMap<u64, BindGroup>,
+        texture_pipeline_bind_groups: &'a HashMap<u32, BindGroup>,
     ) -> Self {
         (|| {
             let mut texture_vertices_index = 0;
@@ -81,161 +69,109 @@ impl<'a> RenderData<'a> {
             let mut triangle_indices = vec![];
 
             let mut render_order = vec![];
-            for thing in frame {
-                let visible = (|| Some(thing.get("visible")?.as_bool()?))().unwrap();
-                if !visible {
-                    continue;
-                }
-
-                fn pt(val: &serde_json::Value) -> Option<(f32, f32)> {
-                    Some((
-                        val.get("x")?.as_f64()? as f32,
-                        val.get("y")?.as_f64()? as f32,
-                    ))
-                }
-
-                fn rgb(val: &serde_json::Value) -> Option<(u8, u8, u8)> {
-                    Some((
-                        (val.get("r")?.as_i64()?.abs() % 256) as u8,
-                        (val.get("g")?.as_i64()?.abs() % 256) as u8,
-                        (val.get("b")?.as_i64()?.abs() % 256) as u8,
-                    ))
-                }
-
-                let img = thing.get("img")?.as_u64()?;
-                let (x, y) = pt(thing.get("pos")?)?;
-                let scale = thing.get("scale")?.as_f64()? as f32;
-
-                let image = &images[&img];
-                let (w, h) = (image.width(), image.height());
-                let aspect_ratio = (h as f32) / (w as f32);
-                let resolution_aspect_ratio =
-                    (resolution.width as f32) / (resolution.height as f32);
-                let (w, h) = (scale, scale * aspect_ratio * resolution_aspect_ratio);
-                texture_vertices.append(&mut vec![
-                    TextureVertex {
-                        position: [x - w / 2.0, y - h / 2.0],
-                        tex_coords: [0.0, 1.0],
-                    },
-                    TextureVertex {
-                        position: [x + w / 2.0, y - h / 2.0],
-                        tex_coords: [1.0, 1.0],
-                    },
-                    TextureVertex {
-                        position: [x + w / 2.0, y + h / 2.0],
-                        tex_coords: [1.0, 0.0],
-                    },
-                    TextureVertex {
-                        position: [x - w / 2.0, y + h / 2.0],
-                        tex_coords: [0.0, 0.0],
-                    },
-                ]);
-
-                let texture_settings = RenderSettings {
-                    pipeline: texture_pipeline,
-                    bind_group: Some(texture_pipeline_bind_groups.get(&img).unwrap()),
-                    vertices_buffer_id: 0,
-                    indices_buffer_id: 1,
-                    vertices_range: (texture_vertices_index, texture_vertices_index + 4),
-                    indices_range: (0, 6),
-                };
-                texture_vertices_index += 4;
-
-                if thing.get("limbs").is_none() {
-                    render_order.push(texture_settings);
-                    continue;
-                }
-
-                if thing.get("limbsInFront")?.as_bool()? {
-                    render_order.push(texture_settings);
-                }
-
-                let mut limbs = vec![];
-                for limb in thing.get("limbs")?.as_array()? {
-                    let mut l = vec![];
-                    for joint in limb.get("points")?.as_array()? {
-                        l.push(character_relative_to_canvas(
-                            pt(joint)?,
-                            scale,
-                            (x, y),
-                            resolution_aspect_ratio,
-                        ));
+            let mut queue = VecDeque::from_iter(frame.things.iter().map(|t| (t, (Point { x : t.pos.x, y : t.pos.y}, t.scale))));
+            while let Some((transform, (global_pos, global_scale))) = queue.pop_front() {
+                for child in &transform.children {
+                    match child {
+                        Object::Transform(t) => {
+                            queue.push_front((t, (Point { x: global_pos.x + t.pos.x * global_scale, y: global_pos.y + t.pos.y * global_scale }, global_scale * t.scale)))
+                        },
+                        Object::Bezier(bezier) => {
+                            fn pt(p : &Point) -> Point2D<f32, UnknownUnit> {
+                                point(p.x, p.y)
+                            }
+                            let limb = &bezier.points;
+        
+                            let mut path_builder = Path::builder();
+                            path_builder.begin(pt(&limb[0]));
+                            path_builder.cubic_bezier_to(
+                                mid(&limb[0], &limb[1]),
+                                mid(&limb[1], &limb[2]),
+                                pt(&limb[2]),
+                            );
+                            path_builder.end(false);
+                            let path = path_builder.build();
+        
+                            let mut tesselator = StrokeTessellator::new();
+                            let mut geometry: VertexBuffers<_, u16> = VertexBuffers::new();
+        
+                            let stroke_options = StrokeOptions::default()
+                                .with_line_width(bezier.thickness)
+                                .with_line_cap(LineCap::Round)
+                                .with_tolerance(0.001);
+        
+                            tesselator
+                                .tessellate_path(
+                                    &path,
+                                    &stroke_options,
+                                    &mut BuffersBuilder::new(&mut geometry, |vertex: StrokeVertex| {
+                                        ColorVertex {
+                                            position: vertex.position().to_array(),
+                                            color: bezier.color.to_linear_rgb(),
+                                        }
+                                    }),
+                                )
+                                .expect("Error during tessellation");
+        
+                            render_order.push(RenderSettings {
+                                pipeline: triangle_pipeline,
+                                bind_group: None,
+                                vertices_buffer_id: 2,
+                                indices_buffer_id: 3,
+                                vertices_range: (
+                                    triangle_indices.len() as u64,
+                                    triangle_indices.len() as u64 + geometry.indices.len() as u64,
+                                ),
+                                indices_range: (
+                                    triangle_vertices.len() as u32,
+                                    triangle_vertices.len() as u32 + geometry.vertices.len() as u32,
+                                ),
+                            });
+                            let triangle_indices_len = triangle_indices.len();
+                            triangle_indices.extend(geometry.indices.iter().map(|x| x + triangle_indices_len as u16));
+                            triangle_vertices.append(&mut geometry.vertices);
+                        },
+                        Object::Img(img) => {
+                            let (x, y) = (global_pos.x, global_pos.y);
+                            let scale = transform.scale * global_scale;
+                            let image = &images[&img.id];
+                            let (w, h) = (image.width(), image.height());
+                            let aspect_ratio = (h as f32) / (w as f32);
+                            let resolution_aspect_ratio =
+                                (resolution.width as f32) / (resolution.height as f32);
+                            let (w, h) = (scale, scale * aspect_ratio * resolution_aspect_ratio);
+                            texture_vertices.append(&mut vec![
+                                TextureVertex {
+                                    position: [x - w / 2.0, y - h / 2.0],
+                                    tex_coords: [0.0, 1.0],
+                                },
+                                TextureVertex {
+                                    position: [x + w / 2.0, y - h / 2.0],
+                                    tex_coords: [1.0, 1.0],
+                                },
+                                TextureVertex {
+                                    position: [x + w / 2.0, y + h / 2.0],
+                                    tex_coords: [1.0, 0.0],
+                                },
+                                TextureVertex {
+                                    position: [x - w / 2.0, y + h / 2.0],
+                                    tex_coords: [0.0, 0.0],
+                                },
+                            ]);
+            
+                            let texture_settings = RenderSettings {
+                                pipeline: texture_pipeline,
+                                bind_group: Some(texture_pipeline_bind_groups.get(&img.id).unwrap()),
+                                vertices_buffer_id: 0,
+                                indices_buffer_id: 1,
+                                vertices_range: (texture_vertices_index, texture_vertices_index + 4),
+                                indices_range: (0, 6),
+                            };
+                            texture_vertices_index += 4;
+                            render_order.push(texture_settings);
+                        },
+                        Object::Text(_) => {},
                     }
-
-                    limbs.push((
-                        l,
-                        rgb(limb.get("color")?)?,
-                        limb.get("thickness")?.as_f64()? as f32 * scale,
-                    ));
-                }
-
-                let mut i = 0;
-                let mut v = 0;
-
-                let triangle_vertices_index = triangle_vertices.len();
-                let triangle_indices_index = triangle_indices.len();
-                for (limb, (r, g, b), thickness) in limbs {
-                    let color = Color::new(r, g, b);
-                    fn pt((x, y): (f32, f32)) -> Point {
-                        point(x, y)
-                    }
-
-                    let mut path_builder = Path::builder();
-                    path_builder.begin(pt(limb[0]));
-                    path_builder.cubic_bezier_to(
-                        pt(mid(limb[0], limb[1])),
-                        pt(mid(limb[1], limb[2])),
-                        pt(limb[2]),
-                    );
-                    path_builder.end(false);
-                    let path = path_builder.build();
-
-                    let mut tesselator = StrokeTessellator::new();
-                    let mut geometry: VertexBuffers<_, u16> = VertexBuffers::new();
-
-                    let stroke_options = StrokeOptions::default()
-                        .with_line_width(thickness)
-                        .with_line_cap(LineCap::Round)
-                        .with_tolerance(0.001);
-
-                    tesselator
-                        .tessellate_path(
-                            &path,
-                            &stroke_options,
-                            &mut BuffersBuilder::new(&mut geometry, |vertex: StrokeVertex| {
-                                ColorVertex {
-                                    position: vertex.position().to_array(),
-                                    color: color.to_linear_rgb(),
-                                }
-                            }),
-                        )
-                        .expect("Error during tessellation");
-
-                    i += geometry.indices.len();
-                    triangle_indices.extend(geometry.indices.iter().map(|x| x + v as u16));
-                    v += geometry.vertices.len();
-                    triangle_vertices.append(&mut geometry.vertices);
-                }
-
-                if thing.get("limbs").is_some() {
-                    render_order.push(RenderSettings {
-                        pipeline: triangle_pipeline,
-                        bind_group: None,
-                        vertices_buffer_id: 2,
-                        indices_buffer_id: 3,
-                        vertices_range: (
-                            triangle_vertices_index as u64,
-                            triangle_vertices_index as u64 + v as u64,
-                        ),
-                        indices_range: (
-                            triangle_indices_index as u32,
-                            triangle_indices_index as u32 + i as u32,
-                        ),
-                    });
-                }
-
-                if !(thing.get("limbsInFront")?.as_bool()?) {
-                    render_order.push(texture_settings);
                 }
             }
             let texture_vertices = slice_to_buffer(device, &texture_vertices, VERTEX);

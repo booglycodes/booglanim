@@ -13,14 +13,14 @@ use anyhow::{Context, Result};
 
 use winit::dpi::PhysicalSize;
 
-use crate::frame::FrameDescription;
+use crate::interface::FrameDescription;
 
 use super::renderers::ImageRenderer;
 
 async fn export(
     image_renderer: &ImageRenderer,
     frames: &Vec<Vec<Value>>,
-    images: &HashMap<u64, DynamicImage>,
+    images: &HashMap<u32, DynamicImage>,
     fps: usize,
     mut on_frame_complete: impl FnMut(usize) -> (),
     path: String,
@@ -44,7 +44,7 @@ async fn export(
 pub async fn export_video(
     image_renderer: &ImageRenderer,
     frames: &Vec<FrameDescription>,
-    images: &HashMap<u64, DynamicImage>,
+    images: &HashMap<u32, DynamicImage>,
     fps: usize,
     mut on_frame_complete: impl FnMut(usize) -> (),
     path: String,

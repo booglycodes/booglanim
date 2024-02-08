@@ -61,8 +61,8 @@ pub fn texture_pipeline(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     format : TextureFormat,
-    images: &HashMap<u64, DynamicImage>,
-) -> (RenderPipeline, HashMap<u64, BindGroup>) {
+    images: &HashMap<u32, DynamicImage>,
+) -> (RenderPipeline, HashMap<u32, BindGroup>) {
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         entries: &[
             wgpu::BindGroupLayoutEntry {

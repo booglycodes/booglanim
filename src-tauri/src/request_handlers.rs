@@ -1,16 +1,11 @@
-use crate::{
-    app_data::{AppData, MediaResources}, frame::FrameDescription, signals::{DisplaySignal, EncodeVideoSignal, UpdateMediaResourcesSignal}
-};
 use anyhow::{anyhow, Context, Result};
 use image::{codecs::png::PngEncoder, DynamicImage, ImageEncoder};
 
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-    fs::File,
-    io::Cursor,
-    iter,
-    sync::{mpsc::Sender, Arc, RwLock},
+use std::{collections::HashMap, fmt::Debug, fs::File, io::Cursor, iter, sync::mpsc::Sender};
+
+use crate::{
+    interface::VideoDescription,
+    signals::{ExportVideo, MediaResources, Playback, SetFrame, Signal},
 };
 
 fn errstr(e: impl Debug) -> String {
@@ -18,21 +13,19 @@ fn errstr(e: impl Debug) -> String {
 }
 
 #[tauri::command]
-pub fn add_frames(
-    data: tauri::State<Arc<RwLock<AppData>>>,
-    mut frames: Vec<FrameDescription>,
+pub fn update_video_description(
+    signal_tx: tauri::State<Sender<Signal>>,
+    description: VideoDescription,
 ) -> Result<(), String> {
-    let mut data = data.write().map_err(errstr)?;
-    data.frames.append(&mut frames);
-    Ok(())
+    signal_tx
+        .send(Signal::UpdateVideoDescription(description))
+        .map_err(errstr)
 }
 
 #[tauri::command]
 pub fn update_media_resources(
-    app_data: tauri::State<Arc<RwLock<AppData>>>,
-    update_media_resources_signal_tx: tauri::State<Sender<UpdateMediaResourcesSignal>>,
-    res: Vec<(u64, String)>,
-    fps: usize,
+    signal_tx: tauri::State<Sender<Signal>>,
+    res: Vec<(u32, String)>,
 ) -> Result<(), String> {
     (|| -> Result<_> {
         let supported_image_types = [".png", ".bmp", ".jpg", ".jpeg", ".webp"];
@@ -72,65 +65,80 @@ pub fn update_media_resources(
             }
         };
 
-        let res: Result<HashMap<_, _>> = res
+        let images: Result<HashMap<_, _>> = res
             .into_iter()
             .map(|(id, path)| path_to_resource(path).map(|i| (id, i)))
             .collect();
 
-        let mut app_data = app_data.write().unwrap();
-        app_data.playing = false;
-        app_data.frame = 0;
-        app_data.frames = vec![];
-        app_data.media_resources = MediaResources {
-            images: res?,
+        signal_tx.send(Signal::UpdateMediaResources(MediaResources {
+            images: images?,
             sounds: HashMap::new(),
-        };
-        app_data.fps = fps;
-        update_media_resources_signal_tx
-            .send(UpdateMediaResourcesSignal)
-            .map_err(|e| anyhow!(errstr(e)))
+        }))?;
+
+        signal_tx.send(Signal::SetPlayback(Playback {
+            playing: false,
+            reverse: false,
+            frame: Some(SetFrame::At(0)),
+        }))?;
+        
+        Ok(())
     })()
     .map_err(errstr)
 }
 
-#[tauri::command]
-pub fn play(display_signal_tx: tauri::State<Sender<DisplaySignal>>) -> Result<(), String> {
-    display_signal_tx
-        .send(DisplaySignal {
-            playing: true,
-            frame: None,
-        })
+fn playback(
+    signal_tx: tauri::State<Sender<Signal>>,
+    playing: bool,
+    reverse: bool,
+    frame: Option<SetFrame>,
+) -> Result<(), String> {
+    signal_tx
+        .send(Signal::SetPlayback(Playback {
+            playing,
+            reverse,
+            frame,
+        }))
         .map_err(errstr)
 }
 
 #[tauri::command]
-pub fn pause(display_signal_tx: tauri::State<Sender<DisplaySignal>>) -> Result<(), String> {
-    display_signal_tx
-        .send(DisplaySignal {
-            playing: false,
-            frame: None,
-        })
-        .map_err(errstr)
+pub fn play(signal_tx: tauri::State<Sender<Signal>>) -> Result<(), String> {
+    playback(signal_tx, true, false, None)
 }
 
 #[tauri::command]
-pub fn stop(display_signal_tx: tauri::State<Sender<DisplaySignal>>) -> Result<(), String> {
-    display_signal_tx
-        .send(DisplaySignal {
-            playing: false,
-            frame: Some(0),
-        })
-        .map_err(errstr)
+pub fn pause(signal_tx: tauri::State<Sender<Signal>>) -> Result<(), String> {
+    playback(signal_tx, false, false, None)
+}
+
+#[tauri::command]
+pub fn stop(signal_tx: tauri::State<Sender<Signal>>) -> Result<(), String> {
+    playback(signal_tx, false, false, Some(SetFrame::At(0)))
+}
+
+#[tauri::command]
+pub fn next_frame(signal_tx: tauri::State<Sender<Signal>>) -> Result<(), String> {
+    playback(signal_tx, false, false, Some(SetFrame::Forward(1)))
+}
+
+#[tauri::command]
+pub fn prev_frame(signal_tx: tauri::State<Sender<Signal>>) -> Result<(), String> {
+    playback(signal_tx, false, false, Some(SetFrame::Back(1)))
+}
+
+#[tauri::command]
+pub fn reverse(signal_tx: tauri::State<Sender<Signal>>) -> Result<(), String> {
+    playback(signal_tx, true, true, None)
 }
 
 #[tauri::command]
 pub fn export(
     app_handle: tauri::AppHandle,
-    encode_video_signal_tx: tauri::State<Sender<EncodeVideoSignal>>,
+    signal_tx: tauri::State<Sender<Signal>>,
     path: String,
 ) -> Result<(), String> {
-    encode_video_signal_tx
-        .send(EncodeVideoSignal { app_handle, path })
+    signal_tx
+        .send(Signal::ExportVideo(ExportVideo { app_handle, path }))
         .map_err(errstr)
 }
 
