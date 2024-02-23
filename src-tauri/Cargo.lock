@@ -309,7 +309,6 @@ dependencies = [
  "ffmpeg-next",
  "futures-intrusive",
  "image",
- "itertools",
  "log",
  "lyon",
  "pollster",
@@ -1858,15 +1857,6 @@ dependencies = [
  "hermit-abi",
  "rustix",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "itertools"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
-dependencies = [
- "either",
 ]
 
 [[package]]
@@ -4234,8 +4224,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "video-rs"
-version = "0.5.0"
-source = "git+https://github.com/booglycodes/video-rs.git#a9e9f4822f0265b2a7b4abb00cc1bd49b850859a"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8d3dd3b6f549b8d9076ad080935e5378fdc9b4ebc64d0864d64bb09aa8faff0"
 dependencies = [
  "ffmpeg-next",
  "tracing",

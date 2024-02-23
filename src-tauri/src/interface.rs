@@ -1,7 +1,7 @@
 /// This contains all the structs that are the interface between the UI
 /// and the Renderer. The UI will send requests in the form of a vector of `FrameDescription`s
 /// to make into video. Thus the UI's json requests need to conform to the format defined
-/// by these structures.
+/// by these structs.
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -34,8 +34,21 @@ impl Color {
 }
 
 #[derive(Deserialize)]
+pub struct Node {
+    pub z: f32,
+    pub transform : Transform,
+    pub visible: bool,
+    pub children: Vec<Container>,
+}
+
+#[derive(Deserialize)]
+pub enum Container {
+    Node(Node),
+    Leaf(Object)
+}
+
+#[derive(Deserialize)]
 pub enum Object {
-    Transform(Transform),
     Bezier(Bezier),
     Img(Img),
     Text(Text),
@@ -57,12 +70,69 @@ pub struct Rect {
 
 #[derive(Deserialize)]
 pub struct Transform {
-    pub layer: i32,
-    pub scale: f32,
-    pub rot: f32,
-    pub pos: Point,
-    pub visible: bool,
-    pub children: Vec<Object>,
+    pub pos : Point,
+    pub scale : Point,
+    pub angle : f32,
+}
+
+impl Transform {
+    pub fn identity() -> Self {
+        Self {
+            pos: Point { x: 0.0, y: 0.0 },
+            scale: Point { x: 1.0, y: 1.0 },
+            angle: 0.0,
+        }
+    }
+
+    pub fn to_transformation(&self) -> Transformation2D {
+        let displacement = Transformation2D(
+            [
+                [1.0, 0.0, self.pos.x],
+                [0.0, 1.0, self.pos.y],
+                [0.0, 0.0, 1.0]
+            ]
+        );
+        let scale = Transformation2D(
+            [
+                [self.scale.x, 0.0, 0.0],
+                [0.0, self.scale.y, 0.0],
+                [0.0, 0.0, 1.0]
+            ]
+        );
+        let rotation = Transformation2D(
+            [
+                [self.angle.to_radians().cos(), -self.angle.to_radians().sin(), 0.0],
+                [self.angle.to_radians().sin(), self.angle.to_radians().cos(), 0.0],
+                [0.0, 0.0, 1.0],
+            ]
+        );
+        return displacement.multiply(&scale.multiply(&rotation));
+    }
+}
+
+pub struct Transformation2D(pub [[f32; 3]; 3]);
+
+impl Transformation2D {
+    pub fn multiply(&self, other: &Transformation2D) -> Transformation2D {
+        let mut result = [[0.0; 3]; 3];
+
+        for i in 0..3 {
+            for j in 0..3 {
+                for k in 0..3 {
+                    result[i][j] += self.0[i][k] * other.0[k][j];
+                }
+            }
+        }
+
+        Transformation2D(result)
+    }
+
+    pub fn apply_to(&self, pt: [f32; 2]) -> [f32; 2] {
+        let result: Vec<f32> = self.0.iter().map(|row| {
+            row.iter().zip(&[pt[0], pt[1], 1.0]).map(|(a, b)| a * b).sum()
+        }).collect();
+        [result[0] / result[2], result[1] / result[2]]
+    }
 }
 
 #[derive(Deserialize)]
@@ -82,7 +152,7 @@ pub struct Text {
 #[derive(Deserialize)]
 pub struct Img {
     pub id: u32,
-    pub subrect: Rect,
+    pub subrect: Option<Rect>,
 }
 
 #[derive(Deserialize)]
@@ -129,7 +199,7 @@ fn camera() -> Camera {
 
 #[derive(Deserialize)]
 pub struct FrameDescription {
-    pub things: Vec<Transform>,
+    pub things: Vec<Node>,
     pub settings: Settings,
 }
 

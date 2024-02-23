@@ -1,15 +1,18 @@
 use std::{collections::HashMap, path::PathBuf};
 
+use anyhow::{Context, Result};
+use ffmpeg_next as ffmpeg;
 use image::DynamicImage;
 use serde_json::Value;
 use video_rs::{
     ffmpeg::{
-        ffi::{av_image_copy, av_image_fill_arrays, AVPixelFormat}, format::Pixel, util::frame::Video as Frame, Error as FfmpegError, Rescale
+        ffi::{av_image_copy, av_image_fill_arrays, AVPixelFormat},
+        format::Pixel,
+        util::frame::Video as Frame,
+        Error as FfmpegError, Rescale,
     },
     Encoder, EncoderSettings, Locator, Time,
 };
-use ffmpeg_next as ffmpeg;
-use anyhow::{Context, Result};
 
 use winit::dpi::PhysicalSize;
 
@@ -31,12 +34,11 @@ async fn export(
     options.set("preset", "medium");
     // Tune for low latency
     options.set("tune", "zerolatency");
-    let codec = ffmpeg::encoder::find(ffmpeg::codec::Id::H264).context("could not find h264 codec")?;
+    let codec =
+        ffmpeg::encoder::find(ffmpeg::codec::Id::H264).context("could not find h264 codec")?;
     output.add_stream(codec)?;
-    
-    for (frame_index, frame) in frames.iter().enumerate().into_iter() {
 
-    }
+    for (frame_index, frame) in frames.iter().enumerate().into_iter() {}
 
     Ok(())
 }
@@ -52,9 +54,9 @@ pub async fn export_video(
     let duration = Time::from_nth_of_a_second(fps);
     let mut position = Time::zero();
     let size = image_renderer.size();
+    let (w, h) = (size.width as usize, size.height as usize);
     let destination: Locator = PathBuf::from(path).into();
-    let settings =
-        EncoderSettings::for_h264_yuv420p(size.width as usize, size.height as usize, true);
+    let settings = EncoderSettings::for_h264_yuv420p(w, h, true);
     let mut encoder = Encoder::new(&destination, settings).unwrap();
     for (frame_index, frame) in frames.iter().enumerate().into_iter() {
         let frame = image_renderer.render(frame, images).await;
@@ -116,6 +118,4 @@ unsafe fn av_img_frame(buf: Vec<u8>, size: PhysicalSize<u32>) -> Result<Frame, F
     Ok(frame)
 }
 
-fn audio() {
-    
-}
+fn audio() {}
